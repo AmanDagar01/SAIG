@@ -16,8 +16,8 @@ const navItems = [
   { path: "/", label: "Dashboard", icon: LayoutDashboard },
   { path: "/events", label: "Event Feed", icon: List },
   { path: "/map", label: "Map View", icon: Map },
-  { path: "/trends", label: "Trends", icon: TrendingUp },
-  { path: "/sources", label: "Sources", icon: Database },
+  // { path: "/trends", label: "Trends", icon: TrendingUp },
+  // { path: "/sources", label: "Sources", icon: Database },
 ];
 
 export default function Header() {

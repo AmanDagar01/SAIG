@@ -4,10 +4,10 @@ import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import MarkerClusterGroup from 'react-leaflet-cluster';
 import L from 'leaflet';
 
-import { mockEvents } from '../../data/mockEvents';
+import { fetchEvents } from '../../services/api';
 import { getSeverityColor, getSeverityLabel, getVerificationColor } from '../../utils/scoring';
 import { formatDistanceToNow } from 'date-fns';
-import { MapPin, X } from 'lucide-react';
+import { MapPin, X, ExternalLink, Loader2 } from 'lucide-react';
 import EventDetail from '../EventFeed/EventDetail';
 
 // ---- Icon Fixes ----
@@ -27,7 +27,7 @@ const getSeverityDotColor = (score) => {
   return '#00cc88';
 };
 
-// ---- Custom Marker (pure CSS, no animation div to avoid boxes) ----
+// ---- Custom Marker ----
 const createSeverityIcon = (severity) => {
   const color = getSeverityDotColor(severity);
   const size = severity >= 9 ? 16 : severity >= 7 ? 14 : severity >= 5 ? 12 : 10;
@@ -109,18 +109,55 @@ function MapController({ selectedRegion, regionGroups }) {
 
 // ---- Main Component ----
 export default function ConflictMap() {
+  const [allEvents, setAllEvents] = useState([]);
   const [selectedRegion, setSelectedRegion] = useState(null);
   const [detailEvent, setDetailEvent] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
+  // Load events from API
+  useEffect(() => {
+    async function loadMapEvents() {
+      try {
+        setLoading(true);
+        const result = await fetchEvents({
+          limit: 500,
+          sortBy: 'severity_score',
+          sortOrder: 'DESC',
+        });
+        const parsed = (result.events || []).map(e => ({
+          ...e,
+          tags: typeof e.tags === 'string' ? JSON.parse(e.tags) : e.tags || [],
+        }));
+        setAllEvents(parsed);
+        setError(null);
+      } catch (err) {
+        console.error('Map events load failed:', err);
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadMapEvents();
+  }, []);
+
+  // Filter events that have valid coordinates
   const eventsWithCoords = useMemo(() =>
-    mockEvents.filter(e => typeof e.lat === 'number' && typeof e.lng === 'number'),
-    []
+    allEvents.filter(e =>
+      typeof e.lat === 'number' &&
+      typeof e.lng === 'number' &&
+      e.lat !== 0 &&
+      e.lng !== 0
+    ),
+    [allEvents]
   );
 
+  // Group events by country
   const regionGroups = useMemo(() => {
     const groups = {};
     eventsWithCoords.forEach(event => {
       const key = event.country;
+      if (!key) return;
       if (!groups[key]) {
         groups[key] = { country: key, events: [], maxSeverity: 0 };
       }
@@ -130,12 +167,32 @@ export default function ConflictMap() {
     return groups;
   }, [eventsWithCoords]);
 
+  // Loading state
+  if (loading) {
+    return (
+      <div className="animate-fade-in flex flex-col items-center justify-center py-20">
+        <Loader2 className="w-8 h-8 text-accent-blue animate-spin mb-4" />
+        <p className="text-sm text-text-muted">Loading map data...</p>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="animate-fade-in flex flex-col items-center justify-center py-20">
+        <p className="text-sm text-accent-red mb-2">Failed to load map data</p>
+        <p className="text-xs text-text-muted">{error}</p>
+      </div>
+    );
+  }
+
   return (
     <div className="animate-fade-in space-y-5">
       <div>
         <h1 className="text-xl font-bold text-text-primary mb-1">Conflict Map</h1>
         <p className="text-sm text-text-muted">
-          Scroll to zoom · Drag to pan · Click markers for event details
+          {eventsWithCoords.length} geolocated events · Scroll to zoom · Drag to pan · Click markers for details
         </p>
       </div>
 
@@ -160,7 +217,6 @@ export default function ConflictMap() {
             >
               <MapController selectedRegion={selectedRegion} regionGroups={regionGroups} />
 
-              {/* DARK TILE LAYER - CartoDB Dark Matter (no labels variant avoids grey boxes) */}
               <TileLayer
                 url="https://cartodb-basemaps-{s}.global.ssl.fastly.net/dark_all/{z}/{x}/{y}{r}.png"
                 attribution='&copy; <a href="https://osm.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>'
@@ -218,26 +274,31 @@ export default function ConflictMap() {
 
                         {/* Claim */}
                         <p style={{ fontSize: 12, lineHeight: 1.5, color: '#e0e0ff', marginBottom: 10 }}>
-                          {event.claim_text.length > 140 ? event.claim_text.substring(0, 140) + '...' : event.claim_text}
+                          {(event.title || event.claim_text || '').length > 140
+                            ? (event.title || event.claim_text || '').substring(0, 140) + '...'
+                            : event.title || event.claim_text || ''
+                          }
                         </p>
 
                         {/* Meta */}
                         <div style={{ fontSize: 10, color: '#8888aa', marginBottom: 10, lineHeight: 1.8 }}>
-                          <div>📍 {event.location_text}</div>
-                          <div>👤 {event.actor_1}</div>
-                          <div>📰 {event.source_name} · {event.event_type.replace(/_/g, ' ')}</div>
+                          <div>📍 {event.location_text || event.country || 'Unknown'}</div>
+                          {event.actor_1 && <div>👤 {event.actor_1}</div>}
+                          <div>📰 {event.source_name} · {(event.event_type || 'unknown').replace(/_/g, ' ')}</div>
                         </div>
 
                         {/* Tags */}
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 10 }}>
-                          {event.tags.slice(0, 4).map(tag => (
-                            <span key={tag} style={{
-                              fontSize: 9, padding: '1px 6px', borderRadius: 10,
-                              background: 'rgba(74,158,255,0.1)', color: '#4a9eff',
-                              border: '1px solid rgba(74,158,255,0.2)',
-                            }}>{tag}</span>
-                          ))}
-                        </div>
+                        {event.tags && event.tags.length > 0 && (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 10 }}>
+                            {event.tags.slice(0, 4).map(tag => (
+                              <span key={tag} style={{
+                                fontSize: 9, padding: '1px 6px', borderRadius: 10,
+                                background: 'rgba(74,158,255,0.1)', color: '#4a9eff',
+                                border: '1px solid rgba(74,158,255,0.2)',
+                              }}>{tag}</span>
+                            ))}
+                          </div>
+                        )}
 
                         {/* Actions */}
                         <div style={{ display: 'flex', gap: 8, borderTop: '1px solid #2a2a4a', paddingTop: 8 }}>
@@ -250,17 +311,19 @@ export default function ConflictMap() {
                           >
                             Full Details
                           </button>
-                          <a
-                            href={event.source_url} target="_blank" rel="noopener noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                            style={{
-                              padding: '6px 12px', background: 'rgba(74,158,255,0.08)', color: '#4a9eff',
-                              border: '1px solid rgba(74,158,255,0.2)', borderRadius: 6, fontSize: 11,
-                              fontWeight: 600, cursor: 'pointer', textDecoration: 'none',
-                            }}
-                          >
-                            Source ↗
-                          </a>
+                          {event.source_url && (
+                            <a
+                              href={event.source_url} target="_blank" rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              style={{
+                                padding: '6px 12px', background: 'rgba(74,158,255,0.08)', color: '#4a9eff',
+                                border: '1px solid rgba(74,158,255,0.2)', borderRadius: 6, fontSize: 11,
+                                fontWeight: 600, cursor: 'pointer', textDecoration: 'none',
+                              }}
+                            >
+                              Source ↗
+                            </a>
+                          )}
                         </div>
                       </div>
                     </Popup>
@@ -288,11 +351,11 @@ export default function ConflictMap() {
             </div>
           </div>
 
-          {/* Active events */}
+          {/* Active events badge */}
           <div className="absolute top-3 right-3 bg-bg-secondary/95 backdrop-blur-sm rounded-lg px-3 py-2 border border-border-primary" style={{ zIndex: 1000 }}>
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 bg-accent-red rounded-full pulse-dot" />
-              <span className="text-[10px] text-text-muted font-medium">{eventsWithCoords.length} active events</span>
+              <span className="text-[10px] text-text-muted font-medium">{eventsWithCoords.length} geolocated events</span>
             </div>
           </div>
         </div>
@@ -306,15 +369,21 @@ export default function ConflictMap() {
                   <MapPin className="w-4 h-4 text-accent-red" />
                   {selectedRegion}
                 </h3>
-                <button onClick={() => setSelectedRegion(null)} className="p-1.5 rounded-lg hover:bg-bg-secondary text-text-muted hover:text-text-primary transition-colors">
+                <button
+                  onClick={() => setSelectedRegion(null)}
+                  className="p-1.5 rounded-lg hover:bg-bg-secondary text-text-muted hover:text-text-primary transition-colors"
+                >
                   <X className="w-4 h-4" />
                 </button>
               </div>
 
+              {/* Region stats */}
               <div className="grid grid-cols-2 gap-2 mb-4 shrink-0">
                 <div className="bg-bg-secondary rounded-lg p-3 border border-border-primary">
                   <p className="text-[10px] text-text-muted uppercase">Events</p>
-                  <p className="text-xl font-bold text-text-primary">{regionGroups[selectedRegion].events.length}</p>
+                  <p className="text-xl font-bold text-text-primary">
+                    {regionGroups[selectedRegion].events.length}
+                  </p>
                 </div>
                 <div className="bg-bg-secondary rounded-lg p-3 border border-border-primary">
                   <p className="text-[10px] text-text-muted uppercase">Max Severity</p>
@@ -324,11 +393,16 @@ export default function ConflictMap() {
                 </div>
               </div>
 
+              {/* Events list */}
               <div className="flex-1 overflow-y-auto space-y-2 pr-1">
                 {regionGroups[selectedRegion].events
                   .sort((a, b) => new Date(b.event_datetime_utc) - new Date(a.event_datetime_utc))
                   .map(event => (
-                    <div key={event.id} onClick={() => setDetailEvent(event)} className="bg-bg-secondary border border-border-primary rounded-lg p-3 cursor-pointer card-hover-effect">
+                    <div
+                      key={event.id}
+                      onClick={() => setDetailEvent(event)}
+                      className="bg-bg-secondary border border-border-primary rounded-lg p-3 cursor-pointer card-hover-effect"
+                    >
                       <div className="flex items-center justify-between mb-1.5">
                         <span className={`text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded border ${getVerificationColor(event.verification_status)}`}>
                           {event.verification_status}
@@ -338,7 +412,7 @@ export default function ConflictMap() {
                         </span>
                       </div>
                       <p className="text-xs text-text-primary leading-relaxed mb-2">
-                        {event.claim_text.substring(0, 110)}...
+                        {(event.title || event.claim_text || '').substring(0, 110)}...
                       </p>
                       <div className="flex items-center justify-between">
                         <span className="text-[10px] text-text-muted">
@@ -369,22 +443,48 @@ export default function ConflictMap() {
                       className="w-full flex items-center justify-between bg-bg-secondary border border-border-primary rounded-lg px-3 py-2.5 hover:bg-bg-card-hover transition-colors group"
                     >
                       <div className="flex items-center gap-2">
-                        <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: getSeverityDotColor(group.maxSeverity) }} />
-                        <span className="text-xs text-text-secondary group-hover:text-text-primary transition-colors">{country}</span>
+                        <div
+                          className="w-2.5 h-2.5 rounded-full"
+                          style={{ backgroundColor: getSeverityDotColor(group.maxSeverity) }}
+                        />
+                        <span className="text-xs text-text-secondary group-hover:text-text-primary transition-colors">
+                          {country}
+                        </span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="text-[10px] text-text-muted">{group.events.length}</span>
-                        <span className={`text-[10px] font-bold ${getSeverityColor(group.maxSeverity)}`}>{getSeverityLabel(group.maxSeverity)}</span>
+                        <span className="text-[10px] text-text-muted">
+                          {group.events.length} event{group.events.length > 1 ? 's' : ''}
+                        </span>
+                        <span className={`text-[10px] font-bold ${getSeverityColor(group.maxSeverity)}`}>
+                          {getSeverityLabel(group.maxSeverity)}
+                        </span>
                       </div>
                     </button>
                   ))}
               </div>
+
+              {eventsWithCoords.length === 0 && !loading && (
+                <div className="mt-6 text-center">
+                  <p className="text-xs text-text-muted">
+                    No geolocated events found.
+                  </p>
+                  <p className="text-xs text-text-muted">
+                    Events without coordinates won't appear on the map.
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>
       </div>
 
-      {detailEvent && <EventDetail event={detailEvent} onClose={() => setDetailEvent(null)} />}
+      {/* Event Detail Modal */}
+      {detailEvent && (
+        <EventDetail
+          event={detailEvent}
+          onClose={() => setDetailEvent(null)}
+        />
+      )}
     </div>
   );
 }

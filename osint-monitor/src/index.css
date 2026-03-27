@@ -79,3 +79,206 @@ body {
 .animate-fade-in {
   animation: fadeIn 0.5s ease forwards;
 }
+
+/* ============================================
+   LEAFLET MAP FIXES
+   ============================================ */
+
+/* Base container */
+.leaflet-container {
+  width: 100% !important;
+  height: 100% !important;
+  background: #070710 !important;
+  font-family: 'Inter', system-ui, sans-serif !important;
+}
+
+/* CRITICAL FIX: Tile images - prevent Tailwind from breaking them */
+.leaflet-tile-pane {
+  opacity: 1 !important;
+}
+
+.leaflet-tile {
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+.leaflet-container img {
+  max-width: none !important;
+  max-height: none !important;
+  border: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
+  object-fit: unset !important;
+  image-rendering: auto !important;
+}
+
+/* Fix Tailwind box-sizing conflict */
+.leaflet-container,
+.leaflet-container * {
+  box-sizing: content-box !important;
+}
+
+.leaflet-control-container,
+.leaflet-control-container * {
+  box-sizing: border-box !important;
+}
+
+/* Dark theme zoom controls */
+.leaflet-control-zoom {
+  border: 1px solid #2a2a4a !important;
+  border-radius: 8px !important;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4) !important;
+}
+
+.leaflet-control-zoom a {
+  background-color: #1a1a2e !important;
+  color: #e0e0ff !important;
+  border-color: #2a2a4a !important;
+  width: 32px !important;
+  height: 32px !important;
+  line-height: 32px !important;
+  font-size: 16px !important;
+}
+
+.leaflet-control-zoom a:hover {
+  background-color: #252545 !important;
+  color: #ffffff !important;
+}
+
+.leaflet-control-zoom-in {
+  border-bottom: 1px solid #2a2a4a !important;
+}
+
+/* Attribution */
+.leaflet-control-attribution {
+  background-color: rgba(10, 10, 15, 0.85) !important;
+  color: #555577 !important;
+  font-size: 9px !important;
+  padding: 2px 6px !important;
+  border-radius: 4px 0 0 0 !important;
+}
+
+.leaflet-control-attribution a {
+  color: #4a9eff !important;
+}
+
+/* Popup dark theme */
+.leaflet-popup-content-wrapper {
+  background-color: #12121a !important;
+  color: #e0e0ff !important;
+  border: 1px solid #2a2a4a !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.6) !important;
+  padding: 0 !important;
+}
+
+.leaflet-popup-content {
+  margin: 14px 16px !important;
+  color: #e0e0ff !important;
+  font-size: 12px !important;
+  line-height: 1.5 !important;
+}
+
+.leaflet-popup-tip-container {
+  margin-top: -1px;
+}
+
+.leaflet-popup-tip {
+  background-color: #12121a !important;
+  border: 1px solid #2a2a4a !important;
+  box-shadow: none !important;
+}
+
+.leaflet-popup-close-button {
+  color: #555577 !important;
+  font-size: 18px !important;
+  padding: 4px 8px 0 0 !important;
+  width: 24px !important;
+  height: 24px !important;
+}
+
+.leaflet-popup-close-button:hover {
+  color: #e0e0ff !important;
+}
+
+/* Remove default cluster styles completely */
+.marker-cluster-small,
+.marker-cluster-medium,
+.marker-cluster-large {
+  background: transparent !important;
+  border: none !important;
+}
+
+.marker-cluster-small div,
+.marker-cluster-medium div,
+.marker-cluster-large div {
+  background: transparent !important;
+  border: none !important;
+}
+
+.marker-cluster {
+  background: transparent !important;
+  border: none !important;
+}
+
+/* Custom cluster icon - remove any default background */
+.custom-cluster-icon {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* Custom severity marker - remove default icon background */
+.custom-severity-marker {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* Fix z-index stacking */
+.leaflet-map-pane { z-index: 1 !important; }
+.leaflet-tile-pane { z-index: 2 !important; }
+.leaflet-overlay-pane { z-index: 4 !important; }
+.leaflet-shadow-pane { z-index: 5 !important; }
+.leaflet-marker-pane { z-index: 6 !important; }
+.leaflet-tooltip-pane { z-index: 6 !important; }
+.leaflet-popup-pane { z-index: 7 !important; }
+
+.leaflet-control {
+  z-index: 800 !important;
+}
+
+/* Pulse animation for markers */
+@keyframes markerPulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.4;
+  }
+  50% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+
+/* Smooth tile loading */
+.leaflet-fade-anim .leaflet-tile {
+  transition: opacity 0.15s !important;
+}
+
+/* Hide broken tile images */
+.leaflet-tile-pane img[src=""] {
+  display: none !important;
+}
+
+/* Ensure no white/grey backgrounds leak through */
+.leaflet-tile-container {
+  background: transparent !important;
+}
+
+.leaflet-layer {
+  background: transparent !important;
+}
