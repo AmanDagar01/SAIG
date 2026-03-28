@@ -1,55 +1,26 @@
 import { getDb } from '../database/setup.js';
 
-/**
- * Calculate Escalation Index (0-10)
- * Composite metric based on:
- * - Event frequency (24h vs baseline)
- * - Average severity
- * - High-severity ratio
- * - Domain diversity
- * - Actor count
- */
 export function calculateEscalationIndex() {
   const db = getDb();
 
-  // Events in last 24h
-  const last24h = db.prepare(`
-    SELECT COUNT(*) as count, AVG(severity_score) as avg_sev
-    FROM events
-    WHERE event_datetime_utc >= datetime('now', '-24 hours')
-    AND duplicate_of IS NULL
-  `).get();
+  function query(sql) {
+    const stmt = db.prepare(sql);
+    const rows = [];
+    while (stmt.step()) rows.push(stmt.getAsObject());
+    stmt.free();
+    return rows;
+  }
 
-  // Baseline: average daily events over last 7 days (excluding last 24h)
-  const baseline = db.prepare(`
-    SELECT COUNT(*) / 6.0 as daily_avg
-    FROM events
-    WHERE event_datetime_utc >= datetime('now', '-7 days')
-    AND event_datetime_utc < datetime('now', '-24 hours')
-    AND duplicate_of IS NULL
-  `).get();
+  function queryOne(sql) {
+    const rows = query(sql);
+    return rows[0] || {};
+  }
 
-  // High severity events in last 24h
-  const highSev = db.prepare(`
-    SELECT COUNT(*) as count FROM events
-    WHERE severity_score >= 7
-    AND event_datetime_utc >= datetime('now', '-24 hours')
-    AND duplicate_of IS NULL
-  `).get();
-
-  // Unique domains in last 24h
-  const domains = db.prepare(`
-    SELECT COUNT(DISTINCT domain) as count FROM events
-    WHERE event_datetime_utc >= datetime('now', '-24 hours')
-    AND domain IS NOT NULL AND duplicate_of IS NULL
-  `).get();
-
-  // Unique actors in last 24h
-  const actors = db.prepare(`
-    SELECT COUNT(DISTINCT actor_1) as count FROM events
-    WHERE event_datetime_utc >= datetime('now', '-24 hours')
-    AND actor_1 IS NOT NULL AND duplicate_of IS NULL
-  `).get();
+  const last24h = queryOne("SELECT COUNT(*) as count, AVG(severity_score) as avg_sev FROM events WHERE event_datetime_utc >= datetime('now', '-24 hours')");
+  const baseline = queryOne("SELECT COUNT(*) / 6.0 as daily_avg FROM events WHERE event_datetime_utc >= datetime('now', '-7 days') AND event_datetime_utc < datetime('now', '-24 hours')");
+  const highSev = queryOne("SELECT COUNT(*) as count FROM events WHERE severity_score >= 7 AND event_datetime_utc >= datetime('now', '-24 hours')");
+  const domains = queryOne("SELECT COUNT(DISTINCT domain) as count FROM events WHERE event_datetime_utc >= datetime('now', '-24 hours') AND domain IS NOT NULL AND domain != ''");
+  const actors = queryOne("SELECT COUNT(DISTINCT actor_1) as count FROM events WHERE event_datetime_utc >= datetime('now', '-24 hours') AND actor_1 IS NOT NULL AND actor_1 != ''");
 
   const eventCount = last24h.count || 0;
   const avgSeverity = last24h.avg_sev || 0;
@@ -58,14 +29,12 @@ export function calculateEscalationIndex() {
   const domainCount = domains.count || 0;
   const actorCount = actors.count || 0;
 
-  // Component scores (each 0-1)
-  const frequencyScore = Math.min(eventCount / (baselineDaily * 2), 1); // Spike vs baseline
+  const frequencyScore = Math.min(eventCount / (baselineDaily * 2), 1);
   const severityScore = avgSeverity / 10;
   const highSevRatio = eventCount > 0 ? highSevCount / eventCount : 0;
-  const diversityScore = Math.min(domainCount / 5, 1); // Multiple domains = broader conflict
+  const diversityScore = Math.min(domainCount / 5, 1);
   const actorScore = Math.min(actorCount / 8, 1);
 
-  // Weighted composite
   const index = (
     frequencyScore * 0.25 +
     severityScore * 0.30 +

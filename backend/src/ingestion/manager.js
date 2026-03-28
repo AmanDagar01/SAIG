@@ -2,7 +2,7 @@ import cron from 'node-cron';
 import { v4 as uuidv4 } from 'uuid';
 import { config } from '../config/index.js';
 import { logger } from '../utils/logger.js';
-import { insertEventsBatch, upsertSource, updateSourceFetchTime, logIngestion, getDb } from '../database/queries.js';
+import { insertEventsBatch, upsertSource, updateSourceFetchTime, logIngestion } from '../database/queries.js';
 import { fetchRssFeeds, RSS_FEEDS } from './sources/rssFeeds.js';
 import { fetchGdeltData } from './sources/gdeltCollector.js';
 import { fetchAcledData } from './sources/acledCollector.js';
