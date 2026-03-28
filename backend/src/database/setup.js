@@ -2,11 +2,10 @@ import initSqlJs from 'sql.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { config } from '../config/index.js';
 import { logger } from '../utils/logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__dirname, __filename);
+const __dirname = path.dirname(__filename);
 
 let db = null;
 
@@ -81,44 +80,66 @@ CREATE INDEX IF NOT EXISTS idx_events_actor1 ON events(actor_1);
 export async function initDatabase() {
   const SQL = await initSqlJs();
 
+  // Create directories
   const dataDir = path.resolve(process.cwd(), 'data');
   if (!fs.existsSync(dataDir)) {
     fs.mkdirSync(dataDir, { recursive: true });
+    logger.info('Created data directory');
   }
 
   const logsDir = path.resolve(process.cwd(), 'logs');
   if (!fs.existsSync(logsDir)) {
     fs.mkdirSync(logsDir, { recursive: true });
+    logger.info('Created logs directory');
   }
 
   const dbPath = path.join(dataDir, 'osint.db');
 
+  // Load existing or create new
   if (fs.existsSync(dbPath)) {
-    const buffer = fs.readFileSync(dbPath);
-    db = new SQL.Database(buffer);
-    logger.info(`Database loaded from ${dbPath}`);
+    try {
+      const buffer = fs.readFileSync(dbPath);
+      db = new SQL.Database(buffer);
+      logger.info('Loaded existing database');
+    } catch (err) {
+      logger.warn('Failed to load existing db, creating new:', err.message);
+      db = new SQL.Database();
+    }
   } else {
     db = new SQL.Database();
-    logger.info('Created new in-memory database');
+    logger.info('Created new database');
   }
 
-  db.run("PRAGMA journal_mode=WAL");
-  db.run("PRAGMA busy_timeout=5000");
-  db.run("PRAGMA foreign_keys=ON");
+  // Run schema
+  const statements = SCHEMA.split(';').filter(s => s.trim());
+  for (const stmt of statements) {
+    try {
+      db.run(stmt + ';');
+    } catch (err) {
+      // Ignore "already exists" errors
+      if (!err.message.includes('already exists')) {
+        logger.warn('Schema statement warning:', err.message);
+      }
+    }
+  }
 
-  db.run(SCHEMA);
-
+  // Save to disk
   saveDatabase();
-  logger.info('Database initialized');
+  logger.info('Database ready');
+
   return db;
 }
 
 export function saveDatabase() {
   if (!db) return;
-  const data = db.export();
-  const buffer = Buffer.from(data);
-  const dbPath = path.resolve(process.cwd(), 'data', 'osint.db');
-  fs.writeFileSync(dbPath, buffer);
+  try {
+    const data = db.export();
+    const buffer = Buffer.from(data);
+    const dbPath = path.resolve(process.cwd(), 'data', 'osint.db');
+    fs.writeFileSync(dbPath, buffer);
+  } catch (err) {
+    logger.error('Database save failed:', err.message);
+  }
 }
 
 export function getDb() {
@@ -134,7 +155,7 @@ setInterval(() => {
     try {
       saveDatabase();
     } catch (e) {
-      logger.error('Auto-save failed:', e.message);
+      // silent
     }
   }
 }, 30000);
