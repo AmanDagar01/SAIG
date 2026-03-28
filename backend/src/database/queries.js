@@ -309,27 +309,174 @@ export function getTimelineData(days = 7) {
 export function getHotTopics(limit = 10) {
   const db = getDb();
 
-  // Get frequently mentioned tags in recent events
+  // Tags to EXCLUDE (system/internal tags, not useful for analysts)
+  const excludedTags = [
+    'news_aggregator', 'news_agency', 'news_outlet', 'specialist',
+    'gdelt', 'conflict_database', 'state_media', 'social_media',
+    'telegram', 'government', 'cyber_intelligence', 'monitoring_org',
+    'open_data', 'international_org',
+    'critical-event', 'high-severity', 'unconfirmed-report',
+    'nuclear-related', 'casualty',
+  ];
+
+  // Get recent events (last 72 hours)
   const recentEvents = db.prepare(`
-    SELECT tags FROM events
+    SELECT tags, severity_score, event_datetime_utc, country, actor_1, event_type, domain
+    FROM events
     WHERE event_datetime_utc >= datetime('now', '-72 hours')
     AND duplicate_of IS NULL
   `).all();
 
-  const tagCounts = {};
+  // Count meaningful tags
+  const tagData = {};
   recentEvents.forEach(row => {
-    const tags = JSON.parse(row.tags || '[]');
+    let tags;
+    try {
+      tags = JSON.parse(row.tags || '[]');
+    } catch {
+      tags = [];
+    }
+
     tags.forEach(tag => {
-      tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+      // Skip system/internal tags
+      if (excludedTags.includes(tag)) return;
+      // Skip very short tags
+      if (tag.length < 3) return;
+
+      if (!tagData[tag]) {
+        tagData[tag] = {
+          count: 0,
+          total_severity: 0,
+          latest: row.event_datetime_utc,
+        };
+      }
+      tagData[tag].count += 1;
+      tagData[tag].total_severity += (row.severity_score || 5);
+      // Track latest event with this tag
+      if (row.event_datetime_utc > tagData[tag].latest) {
+        tagData[tag].latest = row.event_datetime_utc;
+      }
     });
   });
 
-  const sortedTags = Object.entries(tagCounts)
-    .sort(([, a], [, b]) => b - a)
-    .slice(0, limit)
-    .map(([tag, count]) => ({ tag, count }));
+  // Also extract topics from countries, actors, and event types
+  const topicSources = {};
 
-  return sortedTags;
+  recentEvents.forEach(row => {
+    // Country-based topics
+    if (row.country && row.country !== 'Unknown' && row.country !== 'International') {
+      const key = `${row.country} activity`;
+      if (!topicSources[key]) {
+        topicSources[key] = { count: 0, total_severity: 0, type: 'country' };
+      }
+      topicSources[key].count += 1;
+      topicSources[key].total_severity += (row.severity_score || 5);
+    }
+
+    // Actor-based topics (only known significant actors)
+    if (row.actor_1) {
+      const actor = row.actor_1;
+      // Only include if mentioned enough times
+      if (!topicSources[actor]) {
+        topicSources[actor] = { count: 0, total_severity: 0, type: 'actor' };
+      }
+      topicSources[actor].count += 1;
+      topicSources[actor].total_severity += (row.severity_score || 5);
+    }
+
+    // Domain-based topics when significant
+    if (row.domain && row.domain !== 'military') {
+      const domainTopic = `${row.domain} operations`;
+      if (!topicSources[domainTopic]) {
+        topicSources[domainTopic] = { count: 0, total_severity: 0, type: 'domain' };
+      }
+      topicSources[domainTopic].count += 1;
+      topicSources[domainTopic].total_severity += (row.severity_score || 5);
+    }
+  });
+
+  // Merge tag-based and topic-based, score them
+  const allTopics = {};
+
+  // Add tag-based topics
+  Object.entries(tagData).forEach(([tag, data]) => {
+    if (data.count >= 2) { // At least 2 mentions
+      const avgSeverity = data.total_severity / data.count;
+      // Score = count * avg_severity (weighted relevance)
+      const score = data.count * avgSeverity;
+      allTopics[tag] = {
+        tag: formatTopicName(tag),
+        raw_tag: tag,
+        count: data.count,
+        avg_severity: Math.round(avgSeverity * 10) / 10,
+        score,
+        type: 'tag',
+      };
+    }
+  });
+
+  // Add topic-based entries (only if significant)
+  Object.entries(topicSources).forEach(([topic, data]) => {
+    if (data.count >= 3 && !allTopics[topic.toLowerCase()]) { // At least 3 mentions
+      const avgSeverity = data.total_severity / data.count;
+      const score = data.count * avgSeverity;
+      allTopics[topic] = {
+        tag: topic,
+        raw_tag: topic,
+        count: data.count,
+        avg_severity: Math.round(avgSeverity * 10) / 10,
+        score,
+        type: data.type,
+      };
+    }
+  });
+
+  // Sort by score (count * severity) and take top N
+  const sorted = Object.values(allTopics)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
+
+  return sorted;
+}
+
+// Helper: Format tag names to be human-readable
+function formatTopicName(tag) {
+  // Common tag formatting
+  const specialNames = {
+    'escalation': 'Escalation Signals',
+    'de-escalation': 'De-escalation Efforts',
+    'civilian-impact': 'Civilian Impact',
+    'cross-border': 'Cross-Border Operations',
+    'proxy-warfare': 'Proxy Warfare',
+    'maritime': 'Maritime Operations',
+    'aerial': 'Aerial Operations',
+    'cyber': 'Cyber Operations',
+    'economic': 'Economic Impact',
+    'diplomatic': 'Diplomatic Activity',
+    'intelligence': 'Intelligence Operations',
+    'weapons-test': 'Weapons Testing',
+    'breaking': 'Breaking Developments',
+    'nuclear': 'Nuclear Concerns',
+    'casualty': 'Casualties Reported',
+    'strait-of-hormuz': 'Strait of Hormuz',
+    'red-sea': 'Red Sea Shipping',
+    'iron-dome': 'Iron Dome Activations',
+    'airstrike': 'Airstrikes',
+    'missile': 'Missile Activity',
+    'drone': 'Drone Operations',
+    'sanctions': 'Sanctions',
+    'ceasefire': 'Ceasefire Talks',
+    'deployment': 'Military Deployments',
+    'interception': 'Interceptions',
+    'info-warfare': 'Information Warfare',
+  };
+
+  if (specialNames[tag]) return specialNames[tag];
+
+  // Generic formatting: replace hyphens/underscores with spaces, capitalize
+  return tag
+    .replace(/[-_]/g, ' ')
+    .replace(/\b\w/g, c => c.toUpperCase());
 }
 
 // ---- SOURCE QUERIES ----

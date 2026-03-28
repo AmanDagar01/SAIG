@@ -351,13 +351,13 @@ export default function ConflictMap() {
             </div>
           </div>
 
-          {/* Active events badge */}
+          {/* Active events badge
           <div className="absolute top-3 right-3 bg-bg-secondary/95 backdrop-blur-sm rounded-lg px-3 py-2 border border-border-primary" style={{ zIndex: 1000 }}>
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 bg-accent-red rounded-full pulse-dot" />
               <span className="text-[10px] text-text-muted font-medium">{eventsWithCoords.length} geolocated events</span>
             </div>
-          </div>
+          </div> */}
         </div>
 
         {/* ---- SIDE PANEL ---- */}

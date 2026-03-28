@@ -101,8 +101,19 @@ export function normalizeArticle(article) {
       tags: [...new Set([
         ...(entities.tags || []),
         ...(scores.tags || []),
-        article.source_type,
-      ])].filter(Boolean).slice(0, 15),
+        // Add domain as tag if exists
+        ...(entities.domain ? [entities.domain] : []),
+        // Add event type as tag if exists
+        ...(entities.event_type ? [entities.event_type.replace(/_/g, '-')] : []),
+      ])].filter(tag => {
+        if (!tag) return false;
+        // Filter out system/source tags
+        const excluded = [
+          'news_aggregator', 'news_agency', 'news_outlet', 'specialist',
+          'gdelt', 'conflict_database', 'state_media', 'unknown',
+        ];
+        return !excluded.includes(tag);
+      }).slice(0, 15),
       raw_data: article.raw || null,
       content_hash: contentHash,
       last_updated_at: now,
