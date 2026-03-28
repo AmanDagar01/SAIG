@@ -71,4 +71,11 @@ async function start() {
   }
 }
 
+import { startKeepAlive } from './utils/keepalive.js';
+
+// Inside app.listen callback, add:
+if (config.env === 'production' && 'https://osint-backend-ai8q.onrender.com') {
+  startKeepAlive(`https://osint-backend-ai8q.onrender.com/api/health`);
+}
+
 start();
