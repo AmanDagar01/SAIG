@@ -16,7 +16,9 @@ import dashboardRouter from './api/routes/dashboard.js';
 const app = express();
 
 app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
-app.use(cors({ origin: config.cors.origin, methods: ['GET', 'POST'] }));
+app.use(cors({ origin: ['https://osint-monitor-sand.vercel.app', 'http://localhost:3000', 'http://localhost:5173'],
+   methods: ['GET', 'POST'],
+   credentials: true }));
 app.use(express.json());
 app.use(apiLimiter);
 
