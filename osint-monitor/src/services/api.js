@@ -1,4 +1,5 @@
-const API_BASE = 'http://localhost:3001/api';
+// Auto-detect API URL based on environment
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
 class ApiError extends Error {
   constructor(message, status) {
@@ -61,18 +62,9 @@ export async function fetchEvents({
   actor,
 } = {}) {
   return fetchApi('/events', {
-    limit,
-    offset,
-    sortBy,
-    sortOrder,
-    country,
-    domain,
-    eventType,
-    verification,
-    minSeverity,
-    sourceType,
-    search,
-    actor,
+    limit, offset, sortBy, sortOrder,
+    country, domain, eventType, verification,
+    minSeverity, sourceType, search, actor,
   });
 }
 
