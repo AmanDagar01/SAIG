@@ -1,5 +1,5 @@
 // Auto-detect API URL based on environment
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+const API_BASE = 'https://osint-backend-ai8q.onrender.com/api' || 'http://localhost:3001/api';
 
 class ApiError extends Error {
   constructor(message, status) {
